@@ -1,0 +1,26 @@
+{
+  "name": "ripplemap-export",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c cyan,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch index.js",
+    "dev:client": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jszip": "^3.10.2",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "vite": "^6.0.5"
+  }
+}
