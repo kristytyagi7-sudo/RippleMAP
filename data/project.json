@@ -1,0 +1,26 @@
+{
+  "project": {
+    "name": "RIPPLEMAP Demo Workspace",
+    "description": "A fictional web app dependency map used to demonstrate impact analysis."
+  },
+  "files": [
+    { "id": "config", "name": "config.json", "type": "config", "description": "Shared app and build configuration" },
+    { "id": "app", "name": "app.js", "type": "source", "description": "Application startup and configuration reader" },
+    { "id": "build", "name": "build.js", "type": "build", "description": "Build task that reads configuration" },
+    { "id": "tests", "name": "tests/config.test.js", "type": "test", "description": "Tests expected configuration behaviour" },
+    { "id": "report", "name": "report.md", "type": "docs", "description": "Documents supported configuration options" },
+    { "id": "deploy", "name": "deploy.yml", "type": "pipeline", "description": "Deployment workflow uses build settings" }
+  ],
+  "dependencies": [
+    { "from": "app", "to": "config", "label": "reads config" },
+    { "from": "build", "to": "config", "label": "loads settings" },
+    { "from": "tests", "to": "config", "label": "asserts values" },
+    { "from": "report", "to": "config", "label": "documents options" },
+    { "from": "deploy", "to": "build", "label": "runs build" }
+  ],
+  "actions": [
+    { "id": "rename", "label": "Rename" },
+    { "id": "modify", "label": "Modify" },
+    { "id": "delete", "label": "Delete" }
+  ]
+}
