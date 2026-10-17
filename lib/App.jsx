@@ -5,7 +5,7 @@ import {
   Network, RefreshCw, ScanSearch, ShieldAlert, Sparkles, Terminal,
   TriangleAlert, Upload, Workflow
 } from "lucide-react";
-import sampleProject from "../project.json";
+import sampleProject from "../data/project.json";
 import { analyzeAction } from "./analyzer.js";
 import { scanProjectFiles, scanSingleFile, scanZip } from "./zipScanner.js";
 
