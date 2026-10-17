@@ -53,15 +53,19 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [uploadStatus, setUploadStatus] = useState("");
 
   const isReal = project.mode === "real-scan";
 
-  function loadProject(p) {
+  function loadProject(p, uploadLabel = "") {
     setProject(p);
     setTargetFile(pickDefaultTarget(p));
     setFilter("");
     setResult(null);
     setError("");
+    setUploadStatus(uploadLabel
+      ? `${uploadLabel} ready: ${p.project} · ${p.files.length} supported file(s) · ${p.dependencies.length} local link(s)${p.skippedFiles ? ` · ${p.skippedFiles} extra file(s) skipped` : ""}. Choose a target file below.`
+      : "");
   }
 
   async function onZipChosen(e) {
@@ -72,7 +76,7 @@ export default function App() {
     try {
       if (!/\.zip$/i.test(file.name)) throw new Error("Please choose a .zip file.");
       const scanned = await scanZip(file);
-      loadProject(scanned);
+      loadProject(scanned, "Project ZIP");
     } catch (err) {
       setError(err.message || "Could not read this ZIP file.");
     } finally {
@@ -87,7 +91,7 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      loadProject(scanSingleFile(file));
+      loadProject(scanSingleFile(file), "File");
     } catch (err) {
       setError(err.message || "Could not read this file.");
     } finally {
@@ -102,7 +106,7 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      loadProject(await scanProjectFiles(files));
+      loadProject(await scanProjectFiles(files), "Project folder");
     } catch (err) {
       setError(err.message || "Could not scan this project folder.");
     } finally {
@@ -143,37 +147,58 @@ export default function App() {
         }
       }
     }
-    const sorted = [...result.affectedFiles].sort(
-      (a, b) => (depth[a.id] ?? 99) - (depth[b.id] ?? 99)
-    );
+    const affectedIds = new Set(result.impactedFileIds);
+    const sorted = [...project.files].sort((a, b) => {
+      if (a.id === targetId) return -1;
+      if (b.id === targetId) return 1;
+      const aAffected = affectedIds.has(a.id);
+      const bAffected = affectedIds.has(b.id);
+      if (aAffected !== bAffected) return aAffected ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
     const MAX_NODES = 20;
     const shown = sorted.slice(0, MAX_NODES);
     const hidden = sorted.length - shown.length;
-    const maxDepth = Math.max(...shown.map((f) => depth[f.id] ?? 0), 0);
+    const impacted = shown.filter((file) => affectedIds.has(file.id) && file.id !== targetId);
+    const safe = shown.filter((file) => !affectedIds.has(file.id));
+    const maxDepth = Math.max(...impacted.map((file) => depth[file.id] ?? 1), 1);
+    const nodes = [{ ...shown.find((file) => file.id === targetId), isTarget: true, isAffected: true, pos: [50, 50] }];
     const rings = {};
-    shown.forEach((f) => {
-      const d = depth[f.id] ?? 0;
-      (rings[d] = rings[d] || []).push(f);
+    impacted.forEach((file) => {
+      const ring = depth[file.id] ?? maxDepth;
+      (rings[ring] = rings[ring] || []).push(file);
     });
-    const nodes = [];
-    Object.entries(rings).forEach(([d, list]) => {
-      const dNum = Number(d);
-      list.forEach((f, i) => {
-        if (dNum === 0) {
-          nodes.push({ ...f, pos: [50, 50] });
-          return;
-        }
-        const radius = (dNum / Math.max(1, maxDepth)) * 38;
-        const angle = (i / list.length) * Math.PI * 2 - Math.PI / 2 + dNum * 0.6;
-        const x = Math.min(90, Math.max(10, 50 + radius * Math.cos(angle) * 1.3));
-        const y = Math.min(88, Math.max(12, 50 + radius * Math.sin(angle)));
-        nodes.push({ ...f, pos: [x, y] });
+    Object.entries(rings).forEach(([ring, filesInRing]) => {
+      const radius = (Number(ring) / maxDepth) * 36;
+      filesInRing.forEach((file, index) => {
+        const angle = (index / filesInRing.length) * Math.PI * 2 - Math.PI / 2 + Number(ring) * 0.45;
+        nodes.push({
+          ...file,
+          isAffected: true,
+          pos: [
+            Math.min(90, Math.max(10, 50 + radius * Math.cos(angle) * 1.2)),
+            Math.min(88, Math.max(12, 50 + radius * Math.sin(angle)))
+          ]
+        });
+      });
+    });
+    safe.forEach((file, index) => {
+      const angle = (index / Math.max(1, safe.length)) * Math.PI * 2 - Math.PI / 2;
+      nodes.push({
+        ...file,
+        isAffected: false,
+        pos: [50 + 43 * Math.cos(angle), 50 + 40 * Math.sin(angle)]
       });
     });
     const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
-    const edges = result.dependencyEdges.filter((e) => byId[e.from] && byId[e.to]);
+    const edges = result.dependencyEdges
+      .filter((edge) => byId[edge.from] && byId[edge.to])
+      .map((edge) => ({
+        ...edge,
+        isAffected: affectedIds.has(edge.from) && affectedIds.has(edge.to)
+      }));
     return { nodes, byId, edges, hidden };
-  }, [result]);
+  }, [result, project.files]);
 
   const riskClass = result?.risk?.level?.toLowerCase() || "medium";
 
@@ -191,7 +216,7 @@ export default function App() {
           <a href="#graph">Dependency Map</a>
           <a href="#report">Impact Report</a>
         </nav>
-        <div className="demo-pill"><span className="status-dot" /> {project.scanScope === "single-file" ? "SINGLE FILE" : isReal ? "REAL SCAN" : "SAMPLE"}</div>
+        <div className="demo-pill"><span className="status-dot" /> {project.scanScope === "single-file" ? "SINGLE FILE" : isReal ? "LOCAL SCAN" : "SAMPLE"}</div>
       </header>
 
       <main id="top">
@@ -224,7 +249,7 @@ export default function App() {
         <section className="section-wrap section-block" id="lab">
           <div className="section-heading">
             <div><div className="eyebrow">01 / SIMULATE</div><h2>Action <span>Lab</span></h2></div>
-            <p>Upload a project ZIP to map JavaScript / TypeScript imports, or choose one file from your computer for a standalone preview. A single file cannot show its project dependencies.</p>
+            <p>Select a project folder or ZIP for a local dependency map, or choose one file for a standalone preview. No AI service is used and selected code stays in this browser.</p>
           </div>
           <div className="lab-grid">
             <div className="panel action-panel">
@@ -233,7 +258,7 @@ export default function App() {
               <label>Project</label>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
                 <label className="primary-btn" style={{ cursor: "pointer", margin: 0 }}>
-                  <Upload size={16} /> {busy ? "Scanning project..." : "Upload project ZIP"}
+                  <Upload size={16} /> {busy ? "Scanning ZIP..." : "Upload project ZIP"}
                   <input type="file" accept=".zip,application/zip" onChange={onZipChosen} style={{ display: "none" }} disabled={busy} />
                 </label>
                 <label className="action-option" style={{ width: "auto", padding: "10px 14px", margin: 0, cursor: busy ? "wait" : "pointer" }}>
@@ -256,8 +281,10 @@ export default function App() {
               <p className="fine-print" style={{ marginBottom: 14 }}>
                 <LockKeyhole size={13} /> Files stay in this browser. Folder/ZIP scans check relative JavaScript/TypeScript imports; one file is a standalone preview.
               </p>
+              {uploadStatus && <div className="success-note" role="status"><Check size={16} />{uploadStatus}</div>}
 
               <label htmlFor="target">Target file</label>
+              <p className="field-help">Choose the file you are thinking of changing. The report will list files that import or depend on it.</p>
               <input
                 type="text"
                 placeholder="Search file name..."
@@ -266,19 +293,28 @@ export default function App() {
                 style={{ width: "100%", marginBottom: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "inherit" }}
               />
               <div className="select-wrap">
-                <select id="target" value={targetFile} onChange={(e) => setTargetFile(e.target.value)}>
+                <select id="target" value={targetFile} onChange={(e) => {
+                  setTargetFile(e.target.value);
+                  setResult(null);
+                }}>
                   {visibleFiles.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select><ChevronDown size={16} />
               </div>
+              <p className="selected-target"><strong>Selected:</strong> {project.files.find((file) => file.id === targetFile)?.name || "Choose a file above"}</p>
 
               <label>Proposed action</label>
+              <p className="field-help">Pick a possible change to preview its estimated impact. Nothing will be changed on disk.</p>
               <div className="action-options">
                 {[
                   ["rename", "Rename", "Update a file path"],
+                  ["extension", "Change extension", "For example, .js to .ts"],
                   ["modify", "Modify", "Change file behaviour"],
                   ["delete", "Delete", "Remove a file"]
                 ].map(([id, title, sub]) => (
-                  <button key={id} className={`action-option ${action === id ? "selected" : ""}`} onClick={() => setAction(id)} type="button">
+                  <button key={id} className={`action-option ${action === id ? "selected" : ""}`} onClick={() => {
+                    setAction(id);
+                    setResult(null);
+                  }} type="button">
                     <span className={`action-symbol ${id}`}>{id === "rename" ? <RefreshCw size={17} /> : id === "modify" ? <FileCog size={17} /> : <TriangleAlert size={17} />}</span>
                     <span className="option-copy"><strong>{title}</strong><small>{sub}</small></span>
                     <span className="radio-dot">{action === id && <span />}</span>
@@ -288,7 +324,7 @@ export default function App() {
               <button className="primary-btn analyze-btn" onClick={analyze} disabled={busy || !project.files.length}>
                 <ScanSearch size={17} /> Analyze Impact <ArrowRight size={16} />
               </button>
-              <p className="fine-print"><CircleHelp size={13} /> {project.scanScope === "single-file" ? "Standalone preview only; upload a ZIP to discover project references." : isReal ? "Estimated from import/require statements in your ZIP." : "Showing the built-in sample project."}</p>
+              <p className="fine-print"><CircleHelp size={13} /> {project.scanScope === "single-file" ? "Standalone preview only; upload a folder or ZIP to discover project references." : isReal ? "Estimated from supported relative import/require links; this is not AI and does not run your project." : "Showing the built-in sample project."}</p>
               {error && <div className="error-note">{error}</div>}
             </div>
 
@@ -297,7 +333,7 @@ export default function App() {
               {result ? (
                 <>
                   <div className="result-banner">
-                    <div><span className="mini-label">RISK INDICATOR</span><h3>{result.risk.label}</h3><p>{result.summary}</p></div>
+                    <div><span className="mini-label">ESTIMATED IMPACT · {result.risk.level}</span><h3>{result.risk.label}</h3><p>{result.summary}</p><p className="score-breakdown">{result.risk.directDependents} direct · {result.risk.indirectDependents} indirect · {result.risk.safeCount} outside detected path</p></div>
                     <div className={`risk-score ${riskClass}`}><strong>{result.risk.score}</strong><small>/100</small></div>
                   </div>
                   <div className="affected-list">
@@ -328,7 +364,7 @@ export default function App() {
             <p>The target sits in the centre. Files that depend on it spread outward, closest dependents first.</p>
           </div>
           <div className="panel graph-panel">
-            <div className="graph-toolbar"><div><span className="graph-dot" /> {String(project.project).toUpperCase()} / DEPENDENCY GRAPH</div><div className="legend"><span><i className="legend-target" /> Target</span><span><i className="legend-affected" /> Affected</span></div></div>
+            <div className="graph-toolbar"><div><span className="graph-dot" /> {String(project.project).toUpperCase()} / DEPENDENCY GRAPH</div><div className="legend"><span><i className="legend-target" /> Target</span><span><i className="legend-affected" /> Potential impact</span><span><i className="legend-safe" /> Outside detected path</span></div></div>
             <div className="graph-canvas">
               {!layout && (
                 <p className="fine-print" style={{ position: "absolute", top: "45%", width: "100%", textAlign: "center" }}>Run an analysis to see the map.</p>
@@ -337,20 +373,20 @@ export default function App() {
                 <svg className="graph-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
                   {layout.edges.map((edge) => {
                     const a = layout.byId[edge.from].pos, b = layout.byId[edge.to].pos;
-                    return <g key={`${edge.from}-${edge.to}`}><line x1={`${a[0]}%`} y1={`${a[1]}%`} x2={`${b[0]}%`} y2={`${b[1]}%`} className="edge hot-edge" /><circle cx={`${(a[0]+b[0])/2}%`} cy={`${(a[1]+b[1])/2}%`} r=".6" className="edge-particle" /></g>;
+                    return <g key={`${edge.from}-${edge.to}`}><line x1={`${a[0]}%`} y1={`${a[1]}%`} x2={`${b[0]}%`} y2={`${b[1]}%`} className={`edge ${edge.isAffected ? "impact-edge" : "safe-edge"}`} /></g>;
                   })}
                 </svg>
               )}
               {layout && layout.nodes.map((file) => {
                 const Icon = iconFor(file.type);
                 const isTarget = file.isTarget;
-                return <div key={file.id} title={file.name} className={`graph-node affected-node ${isTarget ? "target-node" : ""}`} style={{ left: `${file.pos[0]}%`, top: `${file.pos[1]}%` }}>
-                  <span className="graph-node-icon"><Icon size={17} /></span><strong>{baseName(file.name)}</strong><small>{isTarget ? "TARGET" : "IN IMPACT PATH"}</small>
+                return <div key={file.id} title={file.name} className={`graph-node ${file.isAffected ? "affected-node" : "safe-node"} ${isTarget ? "target-node" : ""}`} style={{ left: `${file.pos[0]}%`, top: `${file.pos[1]}%` }}>
+                  <span className="graph-node-icon"><Icon size={17} /></span><strong>{baseName(file.name)}</strong><small>{isTarget ? "TARGET" : file.isAffected ? "POTENTIAL IMPACT" : "OUTSIDE DETECTED PATH"}</small>
                 </div>;
               })}
               <div className="graph-watermark">RIPPLEMAP / {project.scanScope === "single-file" ? "SINGLE FILE" : isReal ? "REAL SCAN" : "SAMPLE DATA"}</div>
             </div>
-            <div className="graph-footer"><span><Activity size={14} /> {result ? `${result.affectedFiles.length} files in impact path${layout && layout.hidden > 0 ? ` (showing ${layout.nodes.length})` : ""}` : `${project.files.length} files mapped`}</span><span>Arrows follow import / require links</span></div>
+            <div className="graph-footer"><span><Activity size={14} /> {result ? `${result.risk.affectedCount} potential impact · ${result.risk.safeCount} outside detected path${layout && layout.hidden > 0 ? ` (showing ${layout.nodes.length})` : ""}` : `${project.files.length} files mapped`}</span><span>Link scan only; green is not a guarantee of safety.</span></div>
           </div>
         </section>
 
@@ -371,7 +407,7 @@ export default function App() {
               <ul>{(result?.recoveryChecklist || ["Create a backup or version-control checkpoint.", "Review affected files before applying a change.", "Run focused tests and inspect failures.", "Revert if verification fails."]).map((x) => <li key={x}><Check size={15} />{x}</li>)}</ul>
             </div>
           </div>
-          <div className="disclaimer"><LockKeyhole size={15} /><span><strong>How it works:</strong> {result ? result.disclaimer : "Your ZIP is read inside your browser. RIPPLEMAP finds import/require links between files and estimates impact. No files are changed, renamed or deleted."}</span></div>
+          <div className="disclaimer"><LockKeyhole size={15} /><span><strong>How it works:</strong> {result ? result.disclaimer : "Selected folder/ZIP files are read in this browser. RIPPLEMAP maps supported relative import/require links. No AI service is used; no files are changed, renamed or deleted."}</span></div>
         </section>
       </main>
       <footer className="footer"><a className="brand" href="#top"><span className="brand-mark"><Activity size={17} /></span><span>RIPPLE<span className="brand-accent">MAP</span></span></a><span>Understand the ripple before the change.</span><span>Prototype · Estimated impact</span></footer>
