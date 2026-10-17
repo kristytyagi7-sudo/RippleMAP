@@ -2,7 +2,7 @@
 
 A React + Vite frontend with a Node.js/Express API and bundled JSON sample dependency data. It is designed for a college ideathon demonstration.
 
-> **Important:** This is a standalone starter implementation of the RIPPLEMAP concept, not an exact export of the source files behind the published Bolt website. The browser can inspect a user-selected ZIP for JavaScript/TypeScript import links or accept one standalone file. A standalone file cannot show project dependencies. It does not connect to a remote repository, run project code/tests, or modify/delete files.
+> **Important:** This is a local, rule-based prototype, not an AI code reviewer. The browser can inspect user-selected project folders or ZIPs for supported relative import links, then estimate change impact from that dependency map. A standalone file cannot show project dependencies. It does not send code to an AI service, run project code/tests, or modify/delete files.
 
 ## Requirements
 
@@ -34,11 +34,13 @@ The frontend proxies `/api` requests to the Express API at `http://127.0.0.1:400
 ## Upload a target file or project
 
 - **Upload one file** opens the computer's file picker and adds that file as the analysis target. Because no surrounding project is provided, the report cannot list dependent files.
-- **Upload project folder** uses the browser's folder picker and scans up to 500 JavaScript/TypeScript-family, JSON, and CSS files for relative import/require links.
+- **Upload project folder** uses the browser's folder picker and scans up to 500 JavaScript/TypeScript-family, JSON, and CSS files for relative import/require links. A success message shows the project name, supported file count, and links found.
 - **Upload project ZIP** scans the same supported source files from a ZIP archive.
 - Folder/ZIP scans skip common generated/dependency folders, reject source files larger than 2 MB, and do not execute code or tests. Other file types can be selected as a standalone target, but are not parsed for content or dependencies.
 - A web page can read only files the user explicitly selects; it cannot browse the computer's files without permission.
 - Uploads are processed in the browser and are not stored on a server. Anyone who can open the deployed site can use these pickers, subject to browser support and their own device's file permissions.
+- Select a target file, then choose Rename, Change extension, Modify, or Delete. The report score is a simple heuristic based on action and the number of direct/transitive dependents found by the local link scan; it is not an AI judgement, safety guarantee, or tested failure probability.
+- The dependency graph colors the target, potential impact paths, and files outside the detected path separately. Green means no dependency path was found by this limited scan; it does not guarantee the file is safe or independent.
 
 ## How long the website runs
 
@@ -132,7 +134,7 @@ RIPPLEMAP-export/
 4. Predefined action rules choose a risk indicator and return suggested checks.
 5. The UI renders the response and highlights the mapped nodes.
 
-The uploaded ZIP scan runs locally in the browser; it is not wired to the sample-only API. The risk score is illustrative, not a validated security metric. Dependency relationships are limited to relative import/require statements in supported files. Real project health reporting would require language-specific parsers and running project checks in an isolated environment.
+Uploaded folder/ZIP scans run locally in the browser; they are not wired to the sample-only API. The risk score is a simple illustrative heuristic, not a validated security metric, AI result, or test outcome. Dependency relationships are limited to detected relative import/require statements in supported files. Real project health reporting would require language-specific parsers and running project checks in an isolated environment.
 
 ## Demo tips for judges
 
